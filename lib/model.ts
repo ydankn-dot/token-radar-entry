@@ -79,6 +79,27 @@ export const MODEL_VERSION = 'radar-2';
 /** How many live-token protocols the Live token view carries, by market cap. */
 export const LIVE_ROWS = 40;
 
+/** How many movers each side of the top-movers panel carries. */
+export const TOP_MOVERS = 5;
+
+/** One row of the dashboard's top-movers panel: a board row's 7-day move with its implied value. */
+export interface TopMover {
+  rank: number;
+  slug: string;
+  name: string;
+  change_7d: number;
+  tvl_usd: number;
+  implied_value_usd: number;
+  share_pct: number;
+  watchlist: boolean;
+}
+
+/** The dashboard's top-movers panel: the biggest 7-day gainers and losers on the board. */
+export interface TopMovers {
+  gainers: TopMover[];
+  losers: TopMover[];
+}
+
 /** A farm step: the action, what it costs, and how long it takes. */
 export interface FarmStep {
   text: string;
@@ -164,6 +185,7 @@ export interface RadarData {
   early_size: number;
   live_size: number;
   set_aside: SetAside;
+  movers: TopMovers;
   rows: RadarRow[];
   live: LiveRow[];
 }
@@ -407,6 +429,36 @@ export function liveRows(snapshot: Snapshot): LiveRow[] {
     }));
 }
 
+/**
+ * The board's biggest 7-day movers, five gainers and five losers, from the snapshot's own
+ * change_7d figures. Only rows with a reported change are movers: an unreported change is
+ * not a zero move, it is no move at all. Ties break by TVL, then slug, so the panel is the
+ * same on every run. Each mover also carries its share of the board's total implied value,
+ * so a reader sees how much of the board's claim one mover's move is worth.
+ */
+export function topMovers(board: BoardRow[]): TopMovers {
+  const total = board.reduce((sum, r) => sum + r.implied_value_usd, 0);
+  const moved = board.filter((r) => r.change_7d !== null);
+  const byRise = (a: BoardRow, b: BoardRow): number =>
+    (b.change_7d ?? 0) - (a.change_7d ?? 0) || b.tvl_usd - a.tvl_usd || (a.slug < b.slug ? -1 : a.slug > b.slug ? 1 : 0);
+  const byFall = (a: BoardRow, b: BoardRow): number =>
+    (a.change_7d ?? 0) - (b.change_7d ?? 0) || b.tvl_usd - a.tvl_usd || (a.slug < b.slug ? -1 : a.slug > b.slug ? 1 : 0);
+  const toMover = (r: BoardRow): TopMover => ({
+    rank: r.rank,
+    slug: r.slug,
+    name: r.name,
+    change_7d: r.change_7d ?? 0,
+    tvl_usd: r.tvl_usd,
+    implied_value_usd: r.implied_value_usd,
+    share_pct: total > 0 ? Math.round((r.implied_value_usd / total) * 10000) / 100 : 0,
+    watchlist: r.watchlist,
+  });
+  return {
+    gainers: moved.slice().sort(byRise).slice(0, TOP_MOVERS).map(toMover),
+    losers: moved.slice().sort(byFall).slice(0, TOP_MOVERS).map(toMover),
+  };
+}
+
 /** A board row's compact form for data.js, with the farm plan beside it. */
 export function radarRow(row: BoardRow): RadarRow {
   return {
@@ -453,6 +505,7 @@ export function buildRadar(snapshot: Snapshot, model: ModelConstants = MODEL): {
     early_size: early,
     live_size: live.length,
     set_aside: aside,
+    movers: topMovers(board),
     rows: board.map(radarRow),
     live,
   };

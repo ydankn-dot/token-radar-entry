@@ -457,6 +457,50 @@
     }
   }
 
+  // The top-movers panel: the board's biggest seven-day gainers and losers, with the
+  // implied value each move carries. The numbers come from data.js, computed by main.ts
+  // from the snapshot's own change_7d figures, so the panel and the board agree; a
+  // mover's share is its slice of the board's total implied value, and selecting a
+  // mover opens the same detail view as selecting its row.
+  function moverRow(m, up) {
+    return el('li', null,
+      el('button', { type: 'button', class: 'mover', onclick: function () { openDetail(m.slug); } },
+        el('span', { class: 'mover-rank', text: '#' + m.rank }),
+        el('span', { class: 'mover-name' },
+          el('b', { text: m.name }),
+          m.watchlist ? el('span', { class: 'watch', text: 'watchlist' }) : null,
+          el('span', { class: 'sub', text: m.share_pct.toFixed(2) + '% of the board\u2019s implied value' })
+        ),
+        el('span', { class: 'num ' + (up ? 'pos' : 'neg'), text: fmtPct(m.change_7d) }),
+        el('span', { class: 'num', text: fmtUsd(m.implied_value_usd) })
+      )
+    );
+  }
+  function moverList(title, note, movers, up) {
+    return el('div', { class: 'movers-col' },
+      el('h3', { text: title }),
+      el('p', { class: 'sub', text: note }),
+      el('ul', { class: 'movers' }, movers.map(function (m) { return moverRow(m, up); }))
+    );
+  }
+  function moversPanel() {
+    var mv = DATA.movers;
+    if (!mv || (!mv.gainers.length && !mv.losers.length)) {
+      return el('section', { class: 'panel movers-panel' },
+        el('h2', { text: 'Top movers' }),
+        el('p', { class: 'sub', text: 'No board row reports a seven-day change, so there is nothing to rank by move.' })
+      );
+    }
+    return el('section', { class: 'panel movers-panel' },
+      el('h2', { text: 'Top movers: the biggest seven-day moves' }),
+      el('p', { class: 'sub', text: 'Five gainers and five losers by seven-day TVL change, each with the implied value the model gives it. A move is the snapshot\u2019s own figure; the implied value is the model\u2019s claim, not a price. Select a mover for its model and farm plan.' }),
+      el('div', { class: 'movers-grid' },
+        moverList('Biggest gainers', 'The five pre-token protocols whose TVL rose most in seven days.', mv.gainers, true),
+        moverList('Biggest losers', 'The five pre-token protocols whose TVL fell most in seven days.', mv.losers, false)
+      )
+    );
+  }
+
   function render() {
     app.textContent = '';
     var shell = el('div', { class: 'shell' });
@@ -464,6 +508,7 @@
     shell.appendChild(lede());
     shell.appendChild(controls());
     shell.appendChild(state.tab === 'pre-token' ? boardTable() : liveTable());
+    if (state.tab === 'pre-token') shell.appendChild(moversPanel());
     if (state.tab === 'pre-token') shell.appendChild(modelPanel());
     shell.appendChild(asidePanel());
     shell.appendChild(el('p', { class: 'note', text: 'Implied value is this radar\u2019s own claim from the snapshot\u2019s figures. It does not predict whether or when a token is issued, and a farm plan is not financial advice: a protocol may never issue a token, and farming can lose money.' }));
